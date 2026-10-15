@@ -11,7 +11,7 @@ st.set_page_config(
 # --- CONFIGURAÇÃO DE CREDENCIAIS ---
 USUARIO_CORRETO = "admin"
 SENHA_CORRETA = "12345"
-URL_DO_FORMULARIO_APPSHEET = "https://www.appsheet.com/start/0258d3f8-ef68-4825-94c3-d696dc4f14df"
+URL_DO_FORMULARIO_APPSHEET = "......"
 
 # Inicializa o estado de login caso não exista
 if "logado" not in st.session_state:
