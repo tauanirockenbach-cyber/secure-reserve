@@ -17,7 +17,7 @@ st.set_page_config(
 USUARIO_CORRETO = "admin"
 SENHA_CORRETA = "12345"
 URL_DO_FORMULARIO_APPSHEET = (
-    "https://www.appsheet.com/start/0258d3f8-ef68-4825-94c3-d696dc4f14df"
+    "SEU_LINK"
 )
 
 # Inicialização dos estados da sessão
