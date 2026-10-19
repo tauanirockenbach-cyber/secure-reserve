@@ -1,3 +1,4 @@
+import time
 import streamlit as st
 
 # ------------------------------------------------------------------
@@ -16,11 +17,18 @@ st.set_page_config(
 USUARIO_CORRETO = "admin"
 SENHA_CORRETA = "12345"
 URL_DO_FORMULARIO_APPSHEET = (
-    "Seu link do Appsheets"
+    "https://www.appsheet.com/start/0258d3f8-ef68-4825-94c3-d696dc4f14df"
 )
 
+# Inicialização dos estados da sessão
 if "logado" not in st.session_state:
     st.session_state.logado = False
+
+if "tentativas" not in st.session_state:
+    st.session_state.tentativas = 0
+
+if "bloqueado_ate" not in st.session_state:
+    st.session_state.bloqueado_ate = 0
 
 # ------------------------------------------------------------------
 # ESTILO CSS
@@ -225,27 +233,66 @@ if not st.session_state.logado:
                 unsafe_allow_html=True,
             )
 
+            # Cálculo do tempo restante de bloqueio
+            agora = time.time()
+            tempo_restante = int(st.session_state.bloqueado_ate - agora)
+            esta_bloqueado = tempo_restante > 0
+
+            # Alerta visual de bloqueio
+            if esta_bloqueado:
+                st.error(
+                    f"🔒 Excesso de tentativas falhas. Aguarde **{tempo_restante}s** para tentar novamente."
+                )
+
             usuario = st.text_input(
-                "Usuário", placeholder="Digite seu usuário", icon="👤"
+                "Usuário",
+                placeholder="Digite seu usuário",
+                icon="👤",
+                disabled=esta_bloqueado,
             )
             senha = st.text_input(
-                "Senha", type="password", placeholder="Digite sua senha", icon="🔑"
+                "Senha",
+                type="password",
+                placeholder="Digite sua senha",
+                icon="🔑",
+                disabled=esta_bloqueado,
             )
 
             st.write("")
 
-            if st.button("ENTRAR", use_container_width=True):
+            if st.button("ENTRAR", use_container_width=True, disabled=esta_bloqueado):
                 if usuario == USUARIO_CORRETO and senha == SENHA_CORRETA:
                     st.session_state.logado = True
+                    st.session_state.tentativas = 0
+                    st.session_state.bloqueado_ate = 0
                     st.toast("Acesso autorizado!", icon="✅")
                     st.rerun()
                 else:
-                    st.error("Usuário ou senha incorretos.")
+                    st.session_state.tentativas += 1
+                    restantes = 5 - st.session_state.tentativas
+
+                    if st.session_state.tentativas >= 5:
+                        st.session_state.bloqueado_ate = time.time() + 30
+                        st.session_state.tentativas = 0
+                        st.rerun()
+                    else:
+                        st.error(
+                            f"Usuário ou senha incorretos. Você tem mais {restantes} tentativa(s)."
+                        )
 
             st.markdown(
                 '<div class="rodape">Ambiente seguro e monitorado</div>',
                 unsafe_allow_html=True,
             )
+
+            # Atualização em tempo real sem bloquear a aplicação
+            if esta_bloqueado:
+                time.sleep(1)
+                st.rerun()
+            elif st.session_state.bloqueado_ate > 0:
+                st.session_state.bloqueado_ate = 0
+                st.session_state.tentativas = 0
+                st.rerun()
 
 # ------------------------------------------------------------------
 # TELA PÓS-LOGIN
