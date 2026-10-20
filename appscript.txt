@@ -1,0 +1,58 @@
+function doGet(e) {
+  try {
+    var uidRecebido = e.parameter && e.parameter.uid ? String(e.parameter.uid).trim().toUpperCase() : "";
+
+    if (!uidRecebido) {
+      return ContentService.createTextOutput("Erro_UID_Invalido");
+    }
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var abaUsuarios = ss.getSheetByName("Usuarios");
+    var abaHistorico = ss.getSheetByName("Historico");
+
+    if (!abaUsuarios || !abaHistorico) {
+      return ContentService.createTextOutput("Erro_Abas_Nao_Encontradas");
+    }
+
+    var dadosUsuarios = abaUsuarios.getDataRange().getValues();
+    var nomeUsuario = "Desconhecido";
+    var usuarioEncontrado = false;
+
+    for (var i = 1; i < dadosUsuarios.length; i++) {
+      var uidPlanilha = String(dadosUsuarios[i][0]).trim().toUpperCase();
+
+      // Se a planilha removeu o zero inicial (ex: "1020304" em vez de "01020304"), adiciona-o de volta
+      if (uidPlanilha.length === 7 && uidRecebido.length === 8) {
+        uidPlanilha = "0" + uidPlanilha;
+      }
+
+      if (uidPlanilha === uidRecebido) {
+        nomeUsuario = dadosUsuarios[i][1];
+        usuarioEncontrado = true;
+        break;
+      }
+    }
+
+    var statusAcesso = "Negado";
+    var respostaESP32 = "Acesso_Negado";
+
+    if (usuarioEncontrado) {
+      statusAcesso = "Liberado";
+      respostaESP32 = "Acesso_Permitido";
+    }
+
+    var proximoId = abaHistorico.getLastRow();
+    abaHistorico.appendRow([
+      proximoId,
+      new Date(),
+      nomeUsuario,
+      uidRecebido,
+      statusAcesso
+    ]);
+
+    return ContentService.createTextOutput(respostaESP32);
+
+  } catch (erro) {
+    return ContentService.createTextOutput("Erro_Servidor: " + erro.toString());
+  }
+}
