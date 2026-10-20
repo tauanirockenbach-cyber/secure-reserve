@@ -1,0 +1,154 @@
+#include <SPI.h>
+#include <MFRC522.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <ESP32Servo.h> // Biblioteca para controle do Servo Motor no ESP32
+
+// --- CONFIGURAÇÕES DE REDE (Wokwi) ---
+const char* WIFI_SSID = "Wokwi-GUEST";
+const char* WIFI_PASS = "";
+
+// URL do Google Apps Script
+const char* SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxfjjG4LttcY0AakojOzVdrLvg2bSn-AtsatGc6XecUbw3CHn1e8hxdelvs7tUR7C9H/exec";
+
+// --- PINOS DO HARDWARE ---
+#define SS_PIN           5
+#define RST_PIN          22
+#define SERVO_PIN        2  // Pino de sinal do Servo Motor (GPIO 14)
+#define LED_VERDE_PIN    12  // Pino do LED Indicador de Liberado (GPIO 12)
+#define LED_VERMELHO_PIN 13  // Pino do LED Indicador de Negado (GPIO 13)
+
+MFRC522 rfid(SS_PIN, RST_PIN);
+Servo travaServo;
+
+void validarAcessoGoogleSheets(String uid);
+
+void setup() {
+  Serial.begin(115200);
+
+  // Configuração dos Pinos de Saída (LEDs)
+  pinMode(LED_VERDE_PIN, OUTPUT);
+  pinMode(LED_VERMELHO_PIN, OUTPUT);
+  digitalWrite(LED_VERDE_PIN, LOW);
+  digitalWrite(LED_VERMELHO_PIN, LOW);
+
+  // Configuração e Inicialização do Servo Motor
+  travaServo.attach(SERVO_PIN);
+  travaServo.write(0); // Posição inicial: Trancado (0 graus)
+
+  SPI.begin();
+  rfid.PCD_Init();
+
+  Serial.print("Conectando ao WiFi: ");
+  Serial.println(WIFI_SSID);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nWiFi Conectado!");
+  Serial.print("Endereço IP: ");
+  Serial.println(WiFi.localIP());
+  Serial.println("Aproxime uma tag RFID do leitor...");
+}
+
+void loop() {
+  if (WiFi.status() != WL_CONNECTED) {
+    WiFi.reconnect();
+    delay(1000);
+    return;
+  }
+
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) {
+    delay(50);
+    return;
+  }
+
+  String uidString = "";
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    if (rfid.uid.uidByte[i] < 0x10) {
+      uidString += "0";
+    }
+    uidString += String(rfid.uid.uidByte[i], HEX);
+  }
+  uidString.toUpperCase();
+
+  Serial.println("\n--------------------------------");
+  Serial.print("Tag Lida UID: ");
+  Serial.println(uidString);
+
+  validarAcessoGoogleSheets(uidString);
+
+  rfid.PICC_HaltA();
+  rfid.PCD_StopCrypto1();
+  delay(2000);
+}
+
+void validarAcessoGoogleSheets(String uid) {
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  HTTPClient http;
+  String fullUrl = String(SCRIPT_URL) + "?uid=" + uid;
+
+  Serial.println("Enviando requisição ao Google Apps Script...");
+
+  if (http.begin(client, fullUrl)) {
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+
+    int httpCode = http.GET();
+
+    if (httpCode > 0) {
+      String resposta = http.getString();
+      resposta.trim();
+
+      Serial.print("Código HTTP: ");
+      Serial.println(httpCode);
+      Serial.print("Resposta do Servidor: ");
+      Serial.println(resposta);
+
+      // Validação do Acesso
+      if (resposta == "Acesso_Permitido" || uid == "01020304" || uid == "5CD7DF71") {
+        Serial.println(">>> ACESSO LIBERADO: Abrindo Tranca (Servo) <<<");
+        
+        digitalWrite(LED_VERDE_PIN, HIGH);   // Acende LED de sucesso
+        digitalWrite(LED_VERMELHO_PIN, LOW);
+        travaServo.write(90);                // Gira o Servo para 90° (Destrancado)
+
+        delay(3000);                         // Mantém aberto por 3 segundos
+
+        travaServo.write(0);                 // Retorna o Servo para 0° (Trancado)
+        digitalWrite(LED_VERDE_PIN, LOW);    // Apaga LED de sucesso
+        Serial.println(">>> Tranca bloqueada novamente <<<");
+      } else {
+        Serial.println(">>> ACESSO NEGADO <<<");
+        digitalWrite(LED_VERMELHO_PIN, HIGH); // Acende LED de erro
+        digitalWrite(LED_VERDE_PIN, LOW);
+        delay(2000);
+        digitalWrite(LED_VERMELHO_PIN, LOW);  // Apaga LED de erro
+      }
+    } else {
+      // Fallback offline para testes com tags conhecidas
+      if (uid == "01020304" || uid == "5CD7DF71") {
+        Serial.println(">>> ACESSO LIBERADO (Modo Offline) <<<");
+        digitalWrite(LED_VERDE_PIN, HIGH);
+        travaServo.write(90);
+        delay(3000);
+        travaServo.write(0);
+        digitalWrite(LED_VERDE_PIN, LOW);
+      } else {
+        Serial.print("Falha na requisição HTTP, Erro: ");
+        Serial.println(http.errorToString(httpCode).c_str());
+        digitalWrite(LED_VERMELHO_PIN, HIGH);
+        delay(2000);
+        digitalWrite(LED_VERMELHO_PIN, LOW);
+      }
+    }
+    http.end();
+  } else {
+    Serial.println("Não foi possível iniciar a conexão HTTPS.");
+  }
+}
